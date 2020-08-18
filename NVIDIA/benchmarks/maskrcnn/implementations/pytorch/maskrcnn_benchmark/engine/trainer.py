@@ -106,8 +106,13 @@ def do_train(
         images = images.to(device)
         targets = [target.to(device) for target in targets]
 
+        # Forward pass 
+        start_time = time.time()
         loss_dict = model(images, targets)
+        end_time = time.time()
+        logger.info("Forward time {}".format(end_time - start_time)) 
 
+        start_time = time.time() 
         losses = sum(loss for loss in loss_dict.values())
 
         # reduce losses over all GPUs for logging purposes
@@ -117,13 +122,20 @@ def do_train(
             meters.update(loss=losses_reduced, **loss_dict_reduced)
         else:
             meters.update(loss=losses, **loss_dict)
-
+        end_time = time.time()
+        logger.info("All reduce time {}".format(end_time - start_time))
         # optimizer.zero_grad()
         # Note: If mixed precision is not used, this ends up doing nothing
         # Otherwise apply loss scaling for mixed-precision recipe
         # with optimizer.scale_loss(losses) as scaled_losses:
+        start_time = time.time()
         optimizer.backward(losses)
+        end_time = time.time()
+        logger.info("Backward time {}".format(end_time - start_time))
+        start_time = time.time()
         optimizer.step()
+        end_time = time.time()
+        logger.info("Optimizer time {}".format(end_time - start_time))
         # set_grads_to_none(model)
         optimizer.zero_grad()
         scheduler.step()

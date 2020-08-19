@@ -123,7 +123,7 @@ def do_train(
         else:
             meters.update(loss=losses, **loss_dict)
         end_time = time.time()
-        logger.info("All reduce time {}".format(end_time - start_time))
+        logger.info("Loss reduce time {}".format(end_time - start_time))
         # optimizer.zero_grad()
         # Note: If mixed precision is not used, this ends up doing nothing
         # Otherwise apply loss scaling for mixed-precision recipe
@@ -131,7 +131,7 @@ def do_train(
         start_time = time.time()
         optimizer.backward(losses)
         end_time = time.time()
-        logger.info("Backward time {}".format(end_time - start_time))
+        logger.info("Backward and All reduce time {}".format(end_time - start_time))
         start_time = time.time()
         optimizer.step()
         end_time = time.time()

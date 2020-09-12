@@ -3,6 +3,7 @@
 import datetime
 import logging
 import time
+import pickle 
 
 import torch
 import torch.distributed as dist
@@ -56,6 +57,10 @@ def do_train(
     per_iter_start_callback_fn=None,
     per_iter_end_callback_fn=None,
 ):
+    forward_array = []
+    backward_array = []
+    optimizer_array = []
+    zero_grad_array = []
     logger = logging.getLogger("maskrcnn_benchmark.trainer")
     logger.info("Start training")
     meters = MetricLogger(delimiter="  ")
@@ -106,11 +111,14 @@ def do_train(
         images = images.to(device)
         targets = [target.to(device) for target in targets]
 
-        # Forward pass 
+        # Forward pass  
+        torch.cuda.synchronize()
         start_time = time.time()
         loss_dict = model(images, targets)
+        torch.cuda.synchronize()
         end_time = time.time()
-        logger.info("Forward time {}".format(end_time - start_time)) 
+        forward_array.append((end_time - start_time))
+        #logger.info("Forward time {}".format(end_time - start_time)) 
 
         start_time = time.time() 
         losses = sum(loss for loss in loss_dict.values())
@@ -123,21 +131,33 @@ def do_train(
         else:
             meters.update(loss=losses, **loss_dict)
         end_time = time.time()
-        logger.info("Loss reduce time {}".format(end_time - start_time))
+        #logger.info("Loss reduce time {}".format(end_time - start_time))
         # optimizer.zero_grad()
         # Note: If mixed precision is not used, this ends up doing nothing
         # Otherwise apply loss scaling for mixed-precision recipe
         # with optimizer.scale_loss(losses) as scaled_losses:
+        torch.cuda.synchronize()
         start_time = time.time()
         optimizer.backward(losses)
+        torch.cuda.synchronize()
         end_time = time.time()
-        logger.info("Backward and All reduce time {}".format(end_time - start_time))
+        backward_array.append((end_time - start_time))
+        #logger.info("Backward and All reduce time {}".format(end_time - start_time))
+        torch.cuda.synchronize()
         start_time = time.time()
         optimizer.step()
+        torch.cuda.synchronize()
         end_time = time.time()
-        logger.info("Optimizer time {}".format(end_time - start_time))
+        optimizer_array.append((end_time - start_time))
+        #logger.info("Optimizer time {}".format(end_time - start_time))
         # set_grads_to_none(model)
+        torch.cuda.synchronize()
+        start_time = time.time()        
         optimizer.zero_grad()
+        torch.cuda.synchronize()
+        end_time = time.time()
+        zero_grad_array.append((end_time - start_time))
+        #logger.info("zero grad time {}".format(end_time - start_time))
         scheduler.step()
 
         batch_time = time.time() - end
@@ -170,6 +190,17 @@ def do_train(
         if iteration == max_iter and arguments["save_checkpoints"]:
             checkpointer.save("model_final", **arguments)
 
+        if iteration >= 1500:
+                with open('/workspace/object_detection/datasets/forward.txt', 'wb') as f:
+                    pickle.dump(forward_array, f)
+                with open('/workspace/object_detection/datasets/backward.txt', 'wb') as f:
+                    pickle.dump(backward_array, f)
+                with open('/workspace/object_detection/datasets/optimizer.txt', 'wb') as f:
+                    pickle.dump(optimizer_array, f)
+                with open('/workspace/object_detection/datasets/zero_grad.txt', 'wb') as f:
+                    pickle.dump(zero_grad_array, f)
+                return
+
         # per-epoch work (testing)
         if per_iter_end_callback_fn is not None:
             # Note: iteration has been incremented previously for
@@ -181,11 +212,21 @@ def do_train(
 
     total_training_time = time.time() - start_training_time
     total_time_str = str(datetime.timedelta(seconds=total_training_time))
+
     logger.info(
         "Total training time: {} ({:.4f} s / it)".format(
             total_time_str, total_training_time / (max_iter)
         )
     )
+    #with open('/workspace/object_detection/datasets/forward.txt', 'wb') as f:
+    #    pickle.dump(forward_array, f)
+    #with open('/workspace/object_detection/datasets/backward.txt', 'wb') as f:
+    #    pickle.dump(backward_array, f)
+    #with open('/workspace/object_detection/datasets/optimizer.txt', 'wb') as f:
+    #    pickle.dump(optimizer_array, f)
+    #with open('/workspace/object_detection/datasets/zero_grad.txt', 'wb') as f:
+    #    pickle.dump(zero_grad_array, f)
+
     if per_iter_end_callback_fn is not None:
         if early_exit:
             return True

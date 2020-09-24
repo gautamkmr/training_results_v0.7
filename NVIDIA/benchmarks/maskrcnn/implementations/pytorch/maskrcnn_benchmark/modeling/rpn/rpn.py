@@ -101,7 +101,10 @@ class RPNModule(torch.nn.Module):
         objectness, rpn_box_regression = self.head(features)
         anchors, batched_anchor_data = self.anchor_generator(images, features)
         if self.training:
-            return self._forward_train(batched_anchor_data, objectness, rpn_box_regression, targets)
+            torch.cuda.nvtx.range_push("SAMI_RPN_FORWARD")
+            ret = self._forward_train(batched_anchor_data, objectness, rpn_box_regression, targets)
+            torch.cuda.nvtx.range_pop()
+            return ret
         else:
             return self._forward_test(batched_anchor_data, objectness, rpn_box_regression)
 

@@ -144,6 +144,7 @@ class ResNet(nn.Module):
                 p.requires_grad = False
 
     def forward(self, x):
+        torch.cuda.nvtx.range_push("SAMI_RESNET_FORWARD")
         outputs = []
         if self.nhwc:
             x = nchw_to_nhwc_transform(x)
@@ -155,6 +156,7 @@ class ResNet(nn.Module):
         if self.nhwc and not self.has_fpn:
             for i, t in enumerate(outputs):
                 outputs[i] = nhwc_to_nchw_transform(t)
+        torch.cuda.nvtx.range_pop()        
         return outputs
 
 

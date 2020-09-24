@@ -105,9 +105,9 @@ def do_train(
 
         images = images.to(device)
         targets = [target.to(device) for target in targets]
-
+        torch.cuda.nvtx.range_push("SAMI_MASK_RCNN_FORWARD")
         loss_dict = model(images, targets)
-
+        torch.cuda.nvtx.range_pop()
         losses = sum(loss for loss in loss_dict.values())
 
         # reduce losses over all GPUs for logging purposes
@@ -122,10 +122,16 @@ def do_train(
         # Note: If mixed precision is not used, this ends up doing nothing
         # Otherwise apply loss scaling for mixed-precision recipe
         # with optimizer.scale_loss(losses) as scaled_losses:
+        torch.cuda.nvtx.range_push("SAMI_MASK_RCNN_BACKWARD")
         optimizer.backward(losses)
+        torch.cuda.nvtx.range_pop()
+        torch.cuda.nvtx.range_push("SAMI_MASK_RCNN_OPTIMZER")
         optimizer.step()
+        torch.cuda.nvtx.range_pop()
         # set_grads_to_none(model)
+        torch.cuda.nvtx.range_push("SAMI_MASK_RCNN_ZERO_GRAD")
         optimizer.zero_grad()
+        torch.cuda.nvtx.range_pop()
         scheduler.step()
 
         batch_time = time.time() - end
@@ -157,7 +163,8 @@ def do_train(
             checkpointer.save("model_{:07d}".format(iteration), **arguments)
         if iteration == max_iter and arguments["save_checkpoints"]:
             checkpointer.save("model_final", **arguments)
-
+        if iteration >= 300: 
+            return
         # per-epoch work (testing)
         if per_iter_end_callback_fn is not None:
             # Note: iteration has been incremented previously for

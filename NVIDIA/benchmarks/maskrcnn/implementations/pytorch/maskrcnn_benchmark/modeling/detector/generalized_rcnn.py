@@ -53,8 +53,10 @@ class GeneralizedRCNN(nn.Module):
                                 self.rpn(images, features[1], targets)
 
         if self.roi_heads:
+            torch.cuda.nvtx.range_push("SAMI_ROI_FORWARD")
             x, result, detector_losses = self.roi_heads(features, proposals, targets) if not self.nhwc \
                     else self.roi_heads(features[0], proposals, targets)
+            torch.cuda.nvtx.range_pop()
         ## for NHWC layout case, features[0] are NHWC features, and [1] NCHW
         else:
             # RPN-only models don't have roi_heads

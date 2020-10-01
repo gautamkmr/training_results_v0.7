@@ -87,9 +87,11 @@ def do_train(
         next_images, next_targets = _prefetch()
 
         while next_images is not None:
+            torch.cuda.nvtx.range_push("SAMI_MASK_RCNN_PREFETECH")
             torch.cuda.current_stream().wait_stream(prefetch_stream)
             current_images, current_targets = next_images, next_targets
             next_images, next_targets = _prefetch()
+            torch.cuda.nvtx.range_pop()
             yield current_images, current_targets
     
     synchronize()
@@ -111,13 +113,14 @@ def do_train(
         losses = sum(loss for loss in loss_dict.values())
 
         # reduce losses over all GPUs for logging purposes
+        torch.cuda.nvtx.range_push("SAMI_MASK_RCNN_LOSS_REDUCTION")
         if not disable_allreduce_for_logging:
             loss_dict_reduced = reduce_loss_dict(loss_dict)
             losses_reduced = sum(loss for loss in loss_dict_reduced.values())
             meters.update(loss=losses_reduced, **loss_dict_reduced)
         else:
             meters.update(loss=losses, **loss_dict)
-
+        torch.cuda.nvtx.range_pop()
         # optimizer.zero_grad()
         # Note: If mixed precision is not used, this ends up doing nothing
         # Otherwise apply loss scaling for mixed-precision recipe
